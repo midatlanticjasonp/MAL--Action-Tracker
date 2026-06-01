@@ -2573,9 +2573,13 @@ function repairApproveViaModal(repairId) {
 // ── Hook into saveTask to link back to repair request ─
 const _origSaveTask = saveTask;
 saveTask = function() {
+  // Capture BEFORE _origSaveTask() runs, because closeModal() (called inside
+  // _origSaveTask) resets _pendingRepairApprovalId to null, causing the
+  // status update below to be silently skipped.
+  const capturedRepairId = _pendingRepairApprovalId;
   _origSaveTask();
-  if (_pendingRepairApprovalId) {
-    const req = (state.repairRequests||[]).find(r => r.id === _pendingRepairApprovalId);
+  if (capturedRepairId) {
+    const req = (state.repairRequests||[]).find(r => r.id === capturedRepairId);
     if (req) {
       req.status = 'approved';
       // Find the task we just created (last task in the vessel)
@@ -2586,8 +2590,8 @@ saveTask = function() {
         req.convertedAssignee = lastTask.assignee || '';
       }
       if (db) {
-        db.ref('fleet_repairs/'+_pendingRepairApprovalId+'/status').set('approved');
-        if (req.convertedTaskId) db.ref('fleet_repairs/'+_pendingRepairApprovalId+'/convertedTaskId').set(req.convertedTaskId);
+        db.ref('fleet_repairs/'+capturedRepairId+'/status').set('approved');
+        if (req.convertedTaskId) db.ref('fleet_repairs/'+capturedRepairId+'/convertedTaskId').set(req.convertedTaskId);
       }
       saveState();
       updateRepairBadge();

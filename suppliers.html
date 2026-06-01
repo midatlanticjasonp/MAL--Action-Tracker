@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VesselTrack — Supplier & Technician Database</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<style>
+:root {
+  --bg:#f0f4f8; --surface:#ffffff; --surface2:#eef1f6; --steel:#dde3ec;
+  --teal:#00a896; --teal-dim:#00826f; --teal-glow:rgba(0,168,150,0.08);
+  --amber:#d97706; --red:#dc2626; --green:#16a34a; --blue:#2563eb;
+  --text-pri:#111827; --text-sec:#4b5563; --text-dim:#9ca3af;
+  --border:rgba(0,0,0,0.08); --border-hi:rgba(0,168,150,0.35);
+  --radius:6px; --shadow:0 2px 16px rgba(0,0,0,0.09);
+  --card-shadow:0 8px 40px rgba(0,0,0,0.10);
+  --font-body:'DM Sans',system-ui,sans-serif;
+  --font-mono:'DM Mono','SF Mono',monospace;
+  --font-display:'Bebas Neue','Impact','Arial Narrow',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{height:100%;}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text-pri);min-height:100%;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;gap:16px;padding:0 24px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;position:sticky;top:0;z-index:100;}
+.logo{font-family:var(--font-display);font-size:22px;letter-spacing:2px;color:var(--teal);display:flex;align-items:center;gap:8px;text-decoration:none;}
+.logo svg{width:22px;height:22px;fill:var(--teal);}
+.topbar-divider{width:1px;height:28px;background:var(--border);}
+.topbar-title{font-size:14px;font-weight:500;color:var(--text-sec);white-space:nowrap;}
+.topbar-spacer{flex:1;}
+.conn-badge{display:flex;align-items:center;gap:7px;padding:4px 12px;border-radius:20px;background:var(--surface2);border:1px solid var(--border);font-size:12px;color:var(--text-sec);font-weight:500;}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);flex-shrink:0;transition:background .3s;}
+.conn-dot.live{background:var(--green);box-shadow:0 0 6px rgba(22,163,74,0.5);}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--radius);font-family:var(--font-body);font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;text-decoration:none;}
+.btn svg{width:16px;height:16px;fill:currentColor;flex-shrink:0;}
+.btn-primary{background:var(--teal);color:white;}
+.btn-primary:hover{background:var(--teal-dim);box-shadow:0 0 14px rgba(0,168,150,0.35);}
+.btn-ghost{background:transparent;color:var(--text-sec);border:1px solid var(--steel);}
+.btn-ghost:hover{color:var(--text-pri);border-color:var(--teal);background:var(--teal-glow);}
+.btn-danger{background:rgba(220,38,38,0.08);color:var(--red);border:1px solid rgba(220,38,38,0.2);}
+.btn-danger:hover{background:rgba(220,38,38,0.14);}
+.page-body{flex:1;display:flex;flex-direction:column;max-width:1200px;width:100%;margin:0 auto;padding:24px 24px 48px;}
+.stats-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 20px;display:flex;flex-direction:column;gap:4px;min-width:110px;box-shadow:var(--shadow);}
+.stat-card .stat-val{font-family:var(--font-mono);font-size:22px;font-weight:500;color:var(--text-pri);}
+.stat-card .stat-lbl{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);}
+.stat-card.s-active .stat-val{color:var(--green);}
+.stat-card.s-inactive .stat-val{color:var(--text-dim);}
+.toolbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.toolbar-sep{width:1px;height:22px;background:var(--border);margin:0 4px;}
+.search-box{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0 12px;height:34px;}
+.search-box svg{width:13px;height:13px;fill:var(--text-dim);flex-shrink:0;}
+.search-box input{background:none;border:none;outline:none;font-family:var(--font-body);font-size:13px;color:var(--text-pri);width:200px;}
+.search-box input::placeholder{color:var(--text-dim);}
+.filter-sel{height:34px;padding:0 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-body);font-size:13px;color:var(--text-sec);outline:none;cursor:pointer;}
+.filter-sel:focus{border-color:var(--teal);}
+.section-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.section-title{font-family:var(--font-display);font-size:18px;letter-spacing:1.5px;color:var(--text-pri);}
+.record-count{font-family:var(--font-mono);font-size:11px;color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);padding:2px 8px;border-radius:20px;}
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;box-shadow:var(--shadow);}
+.table-wrap table{width:100%;border-collapse:collapse;}
+thead tr{background:var(--surface2);border-bottom:2px solid var(--border-hi);}
+th{padding:0 14px;height:38px;text-align:left;white-space:nowrap;font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:.06em;color:var(--text-dim);text-transform:uppercase;border-right:1px solid var(--border);user-select:none;}
+th:last-child{border-right:none;}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer;}
+tbody tr:last-child{border-bottom:none;}
+tbody tr:hover{background:var(--teal-glow);}
+td{padding:0 14px;height:42px;border-right:1px solid var(--border);font-size:13px;vertical-align:middle;}
+td:last-child{border-right:none;}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.04em;}
+.badge-green{background:rgba(22,163,74,0.1);color:var(--green);}
+.badge-red{background:rgba(220,38,38,0.1);color:var(--red);}
+.badge-amber{background:rgba(217,119,6,0.1);color:var(--amber);}
+.badge-blue{background:rgba(37,99,235,0.1);color:var(--blue);}
+.badge-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+.icon-btn{width:28px;height:28px;border-radius:4px;background:none;border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;color:var(--text-dim);transition:all .15s;}
+.icon-btn:hover{background:var(--surface2);color:var(--text-pri);}
+.icon-btn.del:hover{background:rgba(220,38,38,0.08);color:var(--red);}
+.icon-btn svg{width:15px;height:15px;fill:currentColor;}
+.actions-cell{display:flex;align-items:center;gap:4px;}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 20px;gap:16px;color:var(--text-dim);}
+.empty-state svg{width:56px;height:56px;opacity:.25;}
+.empty-state h3{font-family:var(--font-display);font-size:24px;letter-spacing:1.5px;color:var(--text-sec);}
+.empty-state p{font-size:13px;}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay.open{display:flex;}
+.modal{background:white;border:1px solid var(--border);border-radius:10px;padding:28px;width:100%;max-width:560px;box-shadow:var(--card-shadow);animation:modalIn .18s ease;}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;}}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;}
+.modal-title{font-family:var(--font-display);font-size:20px;letter-spacing:1.5px;color:var(--text-pri);}
+.modal-close{width:30px;height:30px;border-radius:50%;background:none;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-dim);transition:all .15s;font-size:18px;}
+.modal-close:hover{background:var(--surface2);color:var(--text-pri);}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.form-grid .full{grid-column:1/-1;}
+.form-group{display:flex;flex-direction:column;gap:6px;}
+.form-group label{font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;}
+.form-control{width:100%;padding:9px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-pri);font-family:var(--font-body);font-size:13px;outline:none;transition:border-color .15s;}
+.form-control:focus{border-color:var(--teal);background:white;}
+.form-control::placeholder{color:var(--text-dim);}
+select.form-control{cursor:pointer;}
+textarea.form-control{resize:vertical;min-height:80px;}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:18px;border-top:1px solid var(--border);}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#111827;color:white;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:999;transition:transform .25s ease;pointer-events:none;white-space:nowrap;}
+.toast.show{transform:translateX(-50%) translateY(0);}
+@media(max-width:700px){
+  .page-body{padding:16px 14px 48px;}
+  .form-grid{grid-template-columns:1fr;}
+  .form-grid .full{grid-column:1;}
+  th.hide-sm,td.hide-sm{display:none;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="logo" href="index.html">
+    <svg viewBox="0 0 24 24"><path d="M3 17l5-10 4 7 3-5 6 8H3zm0 2h18v2H3v-2z"/></svg>
+    VesselTrack
+  </a>
+  <div class="topbar-divider"></div>
+  <span class="topbar-title">Supplier &amp; Technician Database</span>
+  <div class="topbar-spacer"></div>
+  <div class="conn-badge">
+    <div class="conn-dot" id="connDot"></div>
+    <span id="connLabel">Connecting…</span>
+  </div>
+  <a href="index.html" class="btn btn-ghost">
+    <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+    Home
+  </a>
+  <button class="btn btn-primary" onclick="openAddModal()">
+    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    Add Entry
+  </button>
+</div>
+
+<div class="page-body">
+  <div class="stats-row">
+    <div class="stat-card"><span class="stat-val" id="statTotal">—</span><span class="stat-lbl">Total</span></div>
+    <div class="stat-card s-active"><span class="stat-val" id="statActive">—</span><span class="stat-lbl">Active</span></div>
+    <div class="stat-card s-inactive"><span class="stat-val" id="statInactive">—</span><span class="stat-lbl">Inactive</span></div>
+    <div class="stat-card"><span class="stat-val" id="statSuppliers">—</span><span class="stat-lbl">Suppliers</span></div>
+    <div class="stat-card"><span class="stat-val" id="statTechs">—</span><span class="stat-lbl">Technicians</span></div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">Directory</span>
+    <span class="record-count" id="recordCount">0 records</span>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><line x1="16.5" y1="16.5" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="text" id="searchInput" placeholder="Search name, trade, location…" oninput="renderTable()">
+    </div>
+    <div class="toolbar-sep"></div>
+    <select class="filter-sel" id="filterType" onchange="renderTable()">
+      <option value="all">All Types</option>
+      <option value="Supplier">Suppliers</option>
+      <option value="Technician">Technicians</option>
+      <option value="Contractor">Contractors</option>
+      <option value="Surveyor">Surveyors</option>
+      <option value="Consultant">Consultants</option>
+    </select>
+    <select class="filter-sel" id="filterStatus" onchange="renderTable()">
+      <option value="all">All Status</option>
+      <option value="Active">Active</option>
+      <option value="Inactive">Inactive</option>
+      <option value="On Hold">On Hold</option>
+    </select>
+    <select class="filter-sel" id="filterTrade" onchange="renderTable()">
+      <option value="all">All Trades</option>
+      <option value="Electrical">Electrical</option>
+      <option value="Mechanical">Mechanical</option>
+      <option value="Hydraulics">Hydraulics</option>
+      <option value="Hull &amp; Structure">Hull &amp; Structure</option>
+      <option value="Navigation">Navigation</option>
+      <option value="Safety &amp; Fire">Safety &amp; Fire</option>
+      <option value="Refrigeration">Refrigeration</option>
+      <option value="Paint &amp; Coating">Paint &amp; Coating</option>
+      <option value="Rigging &amp; Deck">Rigging &amp; Deck</option>
+      <option value="General Marine">General Marine</option>
+      <option value="N/A">N/A</option>
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table id="mainTable">
+      <thead>
+        <tr>
+          <th style="width:36px;">#</th>
+          <th>Name / Company</th>
+          <th class="hide-sm">Type</th>
+          <th class="hide-sm">Trade / Specialty</th>
+          <th>Contact</th>
+          <th class="hide-sm">Location</th>
+          <th>Status</th>
+          <th style="width:88px;">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr><td colspan="8"><div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          <h3>No Entries Yet</h3>
+          <p>Add your first supplier or technician to get started</p>
+        </div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add / Edit Modal -->
+<div class="modal-overlay" id="entryModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modalTitle">ADD ENTRY</span>
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Name / Company *</label>
+        <input class="form-control" id="fName" placeholder="e.g. Caribbean Marine Electricals">
+      </div>
+      <div class="form-group">
+        <label>Type *</label>
+        <select class="form-control" id="fType">
+          <option value="Supplier">Supplier</option>
+          <option value="Technician">Technician</option>
+          <option value="Contractor">Contractor</option>
+          <option value="Surveyor">Surveyor</option>
+          <option value="Consultant">Consultant</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Trade / Specialty</label>
+        <select class="form-control" id="fTrade">
+          <option value="Electrical">Electrical</option>
+          <option value="Mechanical">Mechanical</option>
+          <option value="Hydraulics">Hydraulics</option>
+          <option value="Hull &amp; Structure">Hull &amp; Structure</option>
+          <option value="Navigation">Navigation</option>
+          <option value="Safety &amp; Fire">Safety &amp; Fire</option>
+          <option value="Refrigeration">Refrigeration</option>
+          <option value="Paint &amp; Coating">Paint &amp; Coating</option>
+          <option value="Rigging &amp; Deck">Rigging &amp; Deck</option>
+          <option value="General Marine">General Marine</option>
+          <option value="N/A">N/A</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Contact Person</label>
+        <input class="form-control" id="fContact" placeholder="e.g. John Smith">
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input class="form-control" id="fPhone" placeholder="+1 868 XXX XXXX" type="tel">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input class="form-control" id="fEmail" placeholder="email@example.com" type="email">
+      </div>
+      <div class="form-group">
+        <label>Location / Port</label>
+        <input class="form-control" id="fLocation" placeholder="e.g. Port of Spain, TT">
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select class="form-control" id="fStatus">
+          <option value="Active">Active</option>
+          <option value="Inactive">Inactive</option>
+          <option value="On Hold">On Hold</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Notes</label>
+        <textarea class="form-control" id="fNotes" placeholder="Rates, availability, certifications, any relevant info…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEntry()">
+        <svg viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+        Save Entry
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- View Modal -->
+<div class="modal-overlay" id="viewModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <span class="modal-title" id="viewModalTitle">DETAILS</span>
+      <button class="modal-close" onclick="closeViewModal()">&#10005;</button>
+    </div>
+    <div id="viewModalBody" style="display:grid;gap:12px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="viewDelBtn">
+        <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        Delete
+      </button>
+      <div style="flex:1;"></div>
+      <button class="btn btn-ghost" onclick="closeViewModal()">Close</button>
+      <button class="btn btn-primary" id="viewEditBtn">
+        <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        Edit
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCpnVNMocz54tuDTM2pqaYBFZPsQE4OLA8",
+  authDomain: "database-e6851.firebaseapp.com",
+  databaseURL: "https://database-e6851-default-rtdb.firebaseio.com",
+  projectId: "database-e6851",
+  storageBucket: "database-e6851.firebasestorage.app",
+  messagingSenderId: "738312398642",
+  appId: "1:738312398642:web:546219e72be4787594192b"
+};
+const DB_PATH = 'vesseltrack/suppliers';
+
+let db = null, dbRef = null, entries = {}, editingKey = null;
+
+function initFirebase() {
+  try {
+    const app = firebase.initializeApp(FIREBASE_CONFIG, 'suppliers_' + Date.now());
+    db = firebase.database(app);
+    dbRef = db.ref(DB_PATH);
+    dbRef.on('value', snap => {
+      entries = snap.val() || {};
+      renderTable();
+      updateStats();
+      setConn(true);
+    }, () => setConn(false));
+  } catch(e) { console.error(e); setConn(false); }
+}
+
+function setConn(live) {
+  document.getElementById('connDot').classList.toggle('live', live);
+  document.getElementById('connLabel').textContent = live ? 'Live' : 'Offline';
+}
+
+function saveEntry() {
+  const name = document.getElementById('fName').value.trim();
+  if (!name) { showToast('Name / Company is required'); return; }
+  const data = {
+    name, type: document.getElementById('fType').value,
+    trade: document.getElementById('fTrade').value,
+    contact: document.getElementById('fContact').value.trim(),
+    phone: document.getElementById('fPhone').value.trim(),
+    email: document.getElementById('fEmail').value.trim(),
+    location: document.getElementById('fLocation').value.trim(),
+    status: document.getElementById('fStatus').value,
+    notes: document.getElementById('fNotes').value.trim(),
+    updatedAt: Date.now()
+  };
+  if (editingKey) {
+    dbRef.child(editingKey).update(data)
+      .then(() => { closeModal(); showToast('Entry updated'); })
+      .catch(e => showToast('Error: ' + e.message));
+  } else {
+    data.createdAt = Date.now();
+    dbRef.push(data)
+      .then(() => { closeModal(); showToast('Entry added'); })
+      .catch(e => showToast('Error: ' + e.message));
+  }
+}
+
+function deleteEntry(key) {
+  if (!confirm('Delete this entry? This cannot be undone.')) return;
+  dbRef.child(key).remove()
+    .then(() => { closeViewModal(); showToast('Entry deleted'); })
+    .catch(e => showToast('Error: ' + e.message));
+}
+
+function renderTable() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const ft = document.getElementById('filterType').value;
+  const fs = document.getElementById('filterStatus').value;
+  const ftr = document.getElementById('filterTrade').value;
+
+  const rows = Object.entries(entries).filter(([,e]) => {
+    return (!search || [e.name,e.contact,e.trade,e.location,e.notes].some(v=>(v||'').toLowerCase().includes(search)))
+      && (ft==='all'||e.type===ft)
+      && (fs==='all'||e.status===fs)
+      && (ftr==='all'||e.trade===ftr);
+  }).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
+
+  document.getElementById('recordCount').textContent = rows.length + ' record' + (rows.length!==1?'s':'');
+  const tbody = document.getElementById('tableBody');
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+      <h3>No Results</h3><p>Try adjusting your search or filters</p></div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(([key,e],i) => `
+    <tr onclick="openViewModal('${key}')">
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);text-align:right;">${i+1}</td>
+      <td><div style="font-weight:600;">${esc(e.name||'—')}</div>${e.contact?`<div style="font-size:11px;color:var(--text-dim);">${esc(e.contact)}</div>`:''}</td>
+      <td class="hide-sm">${typeBadge(e.type)}</td>
+      <td class="hide-sm" style="color:var(--text-sec);font-size:12px;">${esc(e.trade||'—')}</td>
+      <td>${e.phone?`<div style="font-size:12px;">${esc(e.phone)}</div>`:''}${e.email?`<div style="font-size:11px;color:var(--text-dim);">${esc(e.email)}</div>`:(!e.phone?'<span style="color:var(--text-dim)">—</span>':'')}</td>
+      <td class="hide-sm" style="font-size:12px;color:var(--text-sec);">${esc(e.location||'—')}</td>
+      <td>${statusBadge(e.status)}</td>
+      <td onclick="event.stopPropagation()">
+        <div class="actions-cell">
+          <button class="icon-btn" title="Edit" onclick="openEditModal('${key}')">
+            <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          </button>
+          <button class="icon-btn del" title="Delete" onclick="deleteEntry('${key}')">
+            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function updateStats() {
+  const all = Object.values(entries);
+  document.getElementById('statTotal').textContent     = all.length;
+  document.getElementById('statActive').textContent    = all.filter(e=>e.status==='Active').length;
+  document.getElementById('statInactive').textContent  = all.filter(e=>e.status==='Inactive'||e.status==='On Hold').length;
+  document.getElementById('statSuppliers').textContent = all.filter(e=>e.type==='Supplier').length;
+  document.getElementById('statTechs').textContent     = all.filter(e=>e.type==='Technician').length;
+}
+
+function openAddModal() {
+  editingKey = null;
+  document.getElementById('modalTitle').textContent = 'ADD ENTRY';
+  ['fName','fContact','fPhone','fEmail','fLocation','fNotes'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('fType').value='Supplier';
+  document.getElementById('fTrade').value='General Marine';
+  document.getElementById('fStatus').value='Active';
+  document.getElementById('entryModal').classList.add('open');
+}
+
+function openEditModal(key) {
+  const e = entries[key]; if(!e) return;
+  editingKey = key;
+  document.getElementById('modalTitle').textContent = 'EDIT ENTRY';
+  document.getElementById('fName').value     = e.name||'';
+  document.getElementById('fType').value     = e.type||'Supplier';
+  document.getElementById('fTrade').value    = e.trade||'General Marine';
+  document.getElementById('fContact').value  = e.contact||'';
+  document.getElementById('fPhone').value    = e.phone||'';
+  document.getElementById('fEmail').value    = e.email||'';
+  document.getElementById('fLocation').value = e.location||'';
+  document.getElementById('fStatus').value   = e.status||'Active';
+  document.getElementById('fNotes').value    = e.notes||'';
+  document.getElementById('entryModal').classList.add('open');
+}
+
+function closeModal() { document.getElementById('entryModal').classList.remove('open'); editingKey=null; }
+function closeViewModal() { document.getElementById('viewModal').classList.remove('open'); }
+
+function openViewModal(key) {
+  const e = entries[key]; if(!e) return;
+  document.getElementById('viewModalTitle').textContent = (e.name||'Entry').toUpperCase();
+  const fields = [
+    ['Type', typeBadge(e.type)],
+    ['Trade', esc(e.trade||'—')],
+    ['Status', statusBadge(e.status)],
+    ['Contact', esc(e.contact||'—')],
+    ['Phone', e.phone?`<a href="tel:${esc(e.phone)}" style="color:var(--teal)">${esc(e.phone)}</a>`:'—'],
+    ['Email', e.email?`<a href="mailto:${esc(e.email)}" style="color:var(--teal)">${esc(e.email)}</a>`:'—'],
+    ['Location', esc(e.location||'—')],
+    ['Notes', e.notes?`<span style="color:var(--text-sec);white-space:pre-wrap;">${esc(e.notes)}</span>`:'—'],
+    ['Added', e.createdAt?new Date(e.createdAt).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}):'—'],
+  ];
+  document.getElementById('viewModalBody').innerHTML = fields.map(([l,v])=>`
+    <div style="display:flex;gap:12px;align-items:baseline;border-bottom:1px solid var(--border);padding-bottom:10px;">
+      <span style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-dim);min-width:80px;flex-shrink:0;">${l}</span>
+      <span>${v}</span>
+    </div>`).join('');
+  document.getElementById('viewEditBtn').onclick = () => { closeViewModal(); openEditModal(key); };
+  document.getElementById('viewDelBtn').onclick  = () => deleteEntry(key);
+  document.getElementById('viewModal').classList.add('open');
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function statusBadge(s) {
+  const m={'Active':'badge-green','Inactive':'badge-red','On Hold':'badge-amber'};
+  return `<span class="badge ${m[s]||'badge-blue'}"><span class="badge-dot"></span>${esc(s||'Unknown')}</span>`;
+}
+function typeBadge(t) {
+  const m={'Supplier':'badge-blue','Technician':'badge-green','Contractor':'badge-amber','Surveyor':'badge-blue','Consultant':'badge-amber'};
+  return `<span class="badge ${m[t]||'badge-blue'}">${esc(t||'—')}</span>`;
+}
+
+let _tt; function showToast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),3000); }
+
+document.getElementById('entryModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
+document.getElementById('viewModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeViewModal();});
+
+initFirebase();
+</script>
+</body>
+</html>
