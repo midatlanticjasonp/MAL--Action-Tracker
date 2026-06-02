@@ -31,8 +31,16 @@ function loadState() {
 }
 function saveState() {
   state._cid = clientId; state._ts = Date.now();
+  
+  // 1. Save everything to local storage
   _store.set('vesseltrack_v2', JSON.stringify(state));
-  if (syncRef && syncConfig.enabled) syncRef.set(state).catch(e=>console.warn(e));
+  
+  // 2. Sync to Firebase, but strip out the local UI state first
+  if (syncRef && syncConfig.enabled) {
+    const syncPayload = Object.assign({}, state);
+    delete syncPayload.activeVesselId; // Prevent hijacking other users' screens
+    syncRef.set(syncPayload).catch(e=>console.warn(e));
+  }
 }
 function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function getActiveVessel() { return state.vessels.find(v=>v.id===state.activeVesselId); }
@@ -139,7 +147,23 @@ function _initFirebase(cfgStr, roomId, showToastMsg) {
     saveSyncConfig();
     syncRef.on('value', snap=>{
       const d=snap.val();
-      if (d && d._ts>(state._ts||0)) { state=d; renderCurrentView(); }
+      if (d && d._ts>(state._ts||0)) { 
+        // 1. Capture the user's current local tab selection
+        const localActiveId = state.activeVesselId;
+        
+        // 2. Accept the incoming data
+        state = d; 
+        
+        // 3. Re-apply the local tab selection
+        state.activeVesselId = localActiveId;
+        
+        // Fallback: If no tab is active, select the first one
+        if (!state.activeVesselId && state.vessels && state.vessels.length > 0) {
+          state.activeVesselId = state.vessels[0].id;
+        }
+
+        renderCurrentView(); 
+      }
     });
     // ── Listen for new repair requests from fleet_repairs/ ──
     initRepairsListener();
