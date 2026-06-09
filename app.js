@@ -1024,7 +1024,7 @@ function buildTaskRow(t,rowNum,isSub,childCount,isCollapsed){
     <td ondblclick="inlineEdit(this,'${t.id}','endDate')" style="font-family:var(--font-mono,'DM Mono',monospace);font-size:12px;${isOverdue(t)?'color:var(--red)':''}">${t.endDate||'—'}${isOverdue(t)?'<span title="Overdue" style="margin-left:4px;">⚠</span>':''}</td>
     <td><div class="progress-wrap"><div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
       <span class="progress-pct" ${!hasAuto?`ondblclick="inlineEditPct(this,'${t.id}')" style="cursor:pointer"`:''}>${pct}%</span></div></td>
-    <td ondblclick="inlineEdit(this,'${t.id}','notes')" style="color:var(--text-sec);font-size:12px;">${escHtml(t.notes||'')}</td>
+    <td ondblclick="inlineEdit(this,'${t.id}','notes')" style="color:var(--text-sec);font-size:12px;white-space:pre-wrap;">${escHtml(t.notes||'')}</td>
     <td><div class="row-actions">
       <button class="icon-btn" onclick="openEditTaskModal('${t.id}')" title="Edit"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></button>
       ${!isSub?`<button class="icon-btn" onclick="openTaskModal('${t.id}')" title="Add subtask"><svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg></button>`:''}
@@ -1200,6 +1200,15 @@ function cyclePriority(id){const o=['low','medium','high','critical'];const vess
 function inlineEdit(cell,id,field){
   const vessel=getActiveVessel();if(!vessel)return;
   const t=vessel.tasks.find(x=>x.id===id);if(!t)return;
+  if(field==='notes'){
+    const ta=document.createElement('textarea'); ta.className='cell-edit';
+    ta.value=t[field]||''; ta.rows=3; ta.style.cssText='width:100%;resize:vertical;min-height:60px;font-family:inherit;font-size:12px;';
+    cell.innerHTML='';cell.appendChild(ta);ta.focus();
+    const commit=()=>{t[field]=ta.value;saveState();renderTasks();renderStats();};
+    ta.addEventListener('blur',commit);
+    ta.addEventListener('keydown',e=>{if(e.key==='Escape')renderTasks();});
+    return;
+  }
   const inp=document.createElement('input'); inp.className='cell-edit';
   if(field==='startDate'||field==='endDate')inp.type='date';
   inp.value=t[field]||''; cell.innerHTML='';cell.appendChild(inp);inp.focus();
