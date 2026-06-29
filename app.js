@@ -2616,22 +2616,21 @@ saveTask = function() {
   if (capturedRepairId) {
     const req = (state.repairRequests||[]).find(r => r.id === capturedRepairId);
     if (req) {
-      req.status = 'approved';
-      // Find the task we just created (last task in the vessel)
+      // Status is already 'approved' (set immediately on button click)
+      // Just link the newly created task back to this repair request
       const vessel = getActiveVessel();
       if (vessel && vessel.tasks && vessel.tasks.length) {
         const lastTask = vessel.tasks[vessel.tasks.length - 1];
         req.convertedTaskId = lastTask.id;
         req.convertedAssignee = lastTask.assignee || '';
       }
-      if (db) {
-        db.ref('fleet_repairs/'+capturedRepairId+'/status').set('approved');
-        if (req.convertedTaskId) db.ref('fleet_repairs/'+capturedRepairId+'/convertedTaskId').set(req.convertedTaskId);
+      if (db && req.convertedTaskId) {
+        db.ref('fleet_repairs/'+capturedRepairId+'/convertedTaskId').set(req.convertedTaskId);
       }
       saveState();
       updateRepairBadge();
       if (currentView === 'repairs') renderRepairView();
-      showRepairToast('\u2705 Repair ' + req.trackingId + ' approved & linked to tracker', 'teal');
+      showRepairToast('\u2705 Repair ' + req.trackingId + ' linked to tracker', 'teal');
     }
     _pendingRepairApprovalId = null;
     // Remove banner
@@ -2661,9 +2660,17 @@ function repairAction(id, action) {
   if (!req) return;
 
   if (action === 'approve') {
-    // Open taskModal pre-filled instead of silently creating a task
+    // Set status to approved immediately, regardless of task creation
+    req.status = 'approved';
+    if (!req.trackingId) { req.trackingId = generateTrackingId(req); }
+    if (db) db.ref('fleet_repairs/'+id+'/status').set('approved');
+    saveState();
+    updateRepairBadge();
+    renderRepairView();
+    showRepairToast('\u2705 Repair ' + req.trackingId + ' approved', 'teal');
+    // Then optionally open the task modal to link it to the tracker
     repairApproveViaModal(id);
-    return; // saveTask() hook handles the rest
+    return;
 
   } else if (action === 'hold') {
     req.status = 'hold';
