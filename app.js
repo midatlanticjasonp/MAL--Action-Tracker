@@ -2604,13 +2604,15 @@ function repairApproveViaModal(repairId) {
 }
 
 // ── Hook into saveTask to link back to repair request ─
+let _repairApprovalSaving = false; // Guard: prevent closeModal cleanup during saveTask
 const _origSaveTask = saveTask;
 saveTask = function() {
   // Capture BEFORE _origSaveTask() runs, because closeModal() (called inside
-  // _origSaveTask) resets _pendingRepairApprovalId to null, causing the
-  // status update below to be silently skipped.
+  // _origSaveTask) would otherwise clear _pendingRepairApprovalId too early.
   const capturedRepairId = _pendingRepairApprovalId;
+  if (capturedRepairId) _repairApprovalSaving = true; // Suppress cleanup in closeModal override
   _origSaveTask();
+  _repairApprovalSaving = false;
   if (capturedRepairId) {
     const req = (state.repairRequests||[]).find(r => r.id === capturedRepairId);
     if (req) {
@@ -2643,7 +2645,8 @@ saveTask = function() {
 const _origCloseModal = closeModal;
 closeModal = function(id) {
   _origCloseModal(id);
-  if (id === 'taskModal' && _pendingRepairApprovalId) {
+  // Only clean up if the modal was cancelled — NOT if saveTask() triggered the close
+  if (id === 'taskModal' && _pendingRepairApprovalId && !_repairApprovalSaving) {
     _pendingRepairApprovalId = null;
     const banner = document.getElementById('repairApprovalBanner');
     if (banner) banner.remove();
