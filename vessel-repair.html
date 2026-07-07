@@ -458,6 +458,110 @@
     display:none;
   }
   .field-error.visible{display:block;}
+
+  /* ── PORTAL TABS ── */
+  .portal-tabs{
+    display:flex;
+    gap:6px;
+    margin:18px 0 0;
+    padding:4px;
+    background:var(--surface2);
+    border-radius:9px;
+  }
+  .portal-tab{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    padding:9px 10px;
+    border-radius:7px;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--text-sec);
+    cursor:pointer;
+    transition:all .15s;
+    user-select:none;
+  }
+  .portal-tab svg{width:14px;height:14px;fill:currentColor;}
+  .portal-tab:hover{color:var(--teal);}
+  .portal-tab.active{background:white;color:var(--teal);box-shadow:0 1px 6px rgba(0,0,0,.08);}
+  .portal-tab .tab-count{
+    background:var(--teal);color:white;border-radius:20px;
+    font-size:10px;padding:1px 7px;font-weight:700;
+  }
+  .portal-tab.active .tab-count{background:var(--teal);}
+  .portal-tab:not(.active) .tab-count{background:var(--text-dim);}
+
+  /* ── STATUS VIEW ── */
+  .status-view{padding:22px 32px 32px;display:none;}
+  .status-view.visible{display:block;}
+  .status-vessel-row{
+    display:flex;
+    gap:12px;
+    align-items:flex-end;
+    margin-bottom:20px;
+  }
+  .status-vessel-row .form-group{flex:1;margin-bottom:0;}
+  .status-refresh-btn{
+    padding:10px 14px;
+    background:var(--surface2);
+    border:1.5px solid var(--border);
+    border-radius:var(--radius);
+    color:var(--text-sec);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:all .15s;
+    flex-shrink:0;
+  }
+  .status-refresh-btn:hover{border-color:var(--teal);color:var(--teal);}
+  .status-refresh-btn svg{width:16px;height:16px;fill:currentColor;}
+  .status-refresh-btn.spinning svg{animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .status-empty{
+    text-align:center;
+    padding:44px 20px;
+    color:var(--text-dim);
+    font-size:13px;
+    line-height:1.6;
+  }
+  .status-empty svg{width:34px;height:34px;fill:var(--text-dim);opacity:.5;margin-bottom:10px;}
+
+  .status-badge{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:3px 10px;border-radius:12px;font-size:10.5px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;
+  }
+  .status-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;}
+  .status-badge.st-pending{background:rgba(217,119,6,.1);color:var(--amber);}
+  .status-badge.st-approved{background:rgba(37,99,235,.1);color:var(--blue);}
+  .status-badge.st-hold{background:rgba(75,85,99,.1);color:var(--text-sec);}
+
+  .request-list{display:flex;flex-direction:column;gap:10px;}
+  .request-card{
+    border:1.5px solid var(--border);
+    border-radius:10px;
+    padding:14px 16px;
+    background:var(--surface2);
+    transition:border-color .15s;
+  }
+  .request-card.safety{border-left:3px solid var(--red);}
+  .request-card-top{
+    display:flex;align-items:flex-start;justify-content:space-between;
+    gap:10px;margin-bottom:6px;
+  }
+  .request-card-item{font-size:14px;font-weight:600;color:var(--text-pri);line-height:1.4;}
+  .request-card-meta{
+    font-size:11px;color:var(--text-dim);
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;
+  }
+  .request-card-desc{
+    font-size:12.5px;color:var(--text-sec);line-height:1.55;
+    margin-top:8px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .request-card-badges{display:flex;gap:6px;flex-shrink:0;}
 </style>
 </head>
 <body>
@@ -485,13 +589,45 @@
     </div>
     <div class="card-title">Vessel Repair &amp; Maintenance Request</div>
     <div class="card-subtitle">Complete this form to notify the Fleet Manager of a repair or maintenance requirement. Critical and safety-related items are escalated immediately upon submission.</div>
-    <div class="card-divider"></div>
+    <div class="card-divider" style="margin-bottom:0;"></div>
+    <div class="portal-tabs">
+      <div class="portal-tab active" id="tabSubmit" onclick="switchPortalTab('submit')">
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        Submit Request
+      </div>
+      <div class="portal-tab" id="tabStatus" onclick="switchPortalTab('status')">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        Track Status
+        <span class="tab-count" id="statusTabCount" style="display:none;">0</span>
+      </div>
+    </div>
   </div>
 
   <!-- Offline warning banner -->
   <div class="offline-banner" id="offlineBanner">
     <svg viewBox="0 0 24 24"><path d="M1 1l22 22-1.41 1.41-2.72-2.72C17.56 23.15 14.83 24 12 24c-4.41 0-8-3.59-8-8 0-2.72.83-5.06 2.31-6.87L1 3.28 1 1zM12 4c4.41 0 8 3.59 8 8 0 1.48-.41 2.86-1.12 4.06L7.94 5.12C9.14 4.41 10.52 4 12 4z"/></svg>
     <span><strong>No database connection.</strong> Your request will be saved locally and synced automatically when the connection is restored.</span>
+  </div>
+
+  <!-- ═══ TRACK STATUS VIEW ═══ -->
+  <div class="status-view" id="statusView">
+    <div class="status-vessel-row">
+      <div class="form-group">
+        <label>Vessel</label>
+        <select class="form-control" id="trackVessel" onchange="onTrackVesselChange()">
+          <option value="">— Select vessel —</option>
+        </select>
+      </div>
+      <button class="status-refresh-btn" id="statusRefreshBtn" onclick="onTrackVesselChange(true)" title="Refresh">
+        <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+      </button>
+    </div>
+    <div id="requestListWrap">
+      <div class="status-empty">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+        Select your vessel above to view its open repair requests.
+      </div>
+    </div>
   </div>
 
   <!-- Form body -->
@@ -721,10 +857,13 @@ const FALLBACK_VESSELS = [
 
 function loadVessels() {
   const sel = document.getElementById('rfVessel');
+  const trackSel = document.getElementById('trackVessel');
 
   function populate(names) {
-    sel.innerHTML = '<option value="">— Select vessel —</option>' +
+    const opts = '<option value="">— Select vessel —</option>' +
       names.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+    sel.innerHTML = opts;
+    trackSel.innerHTML = opts;
   }
 
   if (!db) { populate(FALLBACK_VESSELS); return; }
@@ -964,6 +1103,131 @@ function resetForm() {
   document.getElementById('successState').classList.remove('visible');
   document.getElementById('formBody').style.display   = '';
   document.getElementById('formFooter').style.display = '';
+}
+
+// ══════════════════════════════════════════════════════
+//  TRACK STATUS TAB
+// ══════════════════════════════════════════════════════
+let trackListenerRef = null;   // current Firebase ref being listened to
+let trackListenerVessel = null;
+
+// Requests in these statuses are considered "open" / still in progress.
+// 'closed' and 'archived' are excluded — those items are done.
+const OPEN_STATUSES = ['pending', 'approved', 'hold'];
+
+function switchPortalTab(tab) {
+  const isSubmit = tab === 'submit';
+  document.getElementById('tabSubmit').classList.toggle('active', isSubmit);
+  document.getElementById('tabStatus').classList.toggle('active', !isSubmit);
+
+  document.getElementById('formBody').style.display   = isSubmit ? '' : 'none';
+  document.getElementById('formFooter').style.display  = isSubmit ? '' : 'none';
+  // Success state only shows itself when active via its own class, don't force it on
+  if (!isSubmit) document.getElementById('successState').classList.remove('visible');
+
+  document.getElementById('statusView').classList.toggle('visible', !isSubmit);
+
+  if (!isSubmit) {
+    // Re-attach a listener if a vessel was already selected
+    const v = document.getElementById('trackVessel').value;
+    if (v) attachTrackListener(v);
+  }
+}
+
+function onTrackVesselChange(isManualRefresh) {
+  const v = document.getElementById('trackVessel').value;
+  if (!v) {
+    detachTrackListener();
+    document.getElementById('requestListWrap').innerHTML = emptyStateHtml('Select your vessel above to view its open repair requests.');
+    setStatusTabCount(null);
+    return;
+  }
+  if (isManualRefresh) {
+    const btn = document.getElementById('statusRefreshBtn');
+    btn.classList.add('spinning');
+    setTimeout(() => btn.classList.remove('spinning'), 500);
+  }
+  attachTrackListener(v);
+}
+
+function emptyStateHtml(msg) {
+  return `<div class="status-empty">
+    <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+    ${msg}
+  </div>`;
+}
+
+function attachTrackListener(vesselName) {
+  if (!db) {
+    document.getElementById('requestListWrap').innerHTML =
+      emptyStateHtml('No database connection right now — status can\'t be checked while offline.');
+    setStatusTabCount(null);
+    return;
+  }
+  // Avoid re-subscribing to the same vessel repeatedly
+  if (trackListenerRef && trackListenerVessel === vesselName) return;
+  detachTrackListener();
+
+  trackListenerVessel = vesselName;
+  // Query scoped to this vessel only — the manager's full fleet_repairs list
+  // is filtered server-side by vessel name, so only matching records come back.
+  trackListenerRef = db.ref(REPAIRS_PATH).orderByChild('vessel').equalTo(vesselName);
+  trackListenerRef.on('value', snap => {
+    const val = snap.val() || {};
+    const records = Object.values(val).filter(r => OPEN_STATUSES.includes(r.status));
+    records.sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+    renderRequestList(records);
+    setStatusTabCount(records.length);
+  }, err => {
+    console.warn('Track status listener failed:', err);
+    document.getElementById('requestListWrap').innerHTML =
+      emptyStateHtml('Could not load requests. Please try again in a moment.');
+  });
+}
+
+function detachTrackListener() {
+  if (trackListenerRef) { try { trackListenerRef.off(); } catch(e) {} }
+  trackListenerRef = null;
+  trackListenerVessel = null;
+}
+
+function setStatusTabCount(n) {
+  const badge = document.getElementById('statusTabCount');
+  if (n === null || n === 0) { badge.style.display = 'none'; return; }
+  badge.textContent = n;
+  badge.style.display = '';
+}
+
+const STATUS_LABELS = { pending: 'Pending Review', approved: 'Approved', hold: 'On Hold' };
+const PRIORITY_LABELS = { critical: '⚑ Critical', high: '▲ High', medium: '■ Medium', low: '▼ Low' };
+
+function renderRequestList(records) {
+  const wrap = document.getElementById('requestListWrap');
+  if (!records.length) {
+    wrap.innerHTML = emptyStateHtml('No open repair requests for this vessel right now. All caught up! ✅');
+    return;
+  }
+  wrap.innerHTML = '<div class="request-list">' + records.map(r => `
+    <div class="request-card${r.safetyRisk ? ' safety' : ''}">
+      <div class="request-card-top">
+        <div>
+          <div class="request-card-item">${escHtml(r.item || 'Untitled item')}</div>
+          <div class="request-card-meta">
+            <span>${escHtml(r.department || '—')}</span>
+            <span>·</span>
+            <span>REF: ${escHtml((r.id || '').toUpperCase())}</span>
+            <span>·</span>
+            <span>${r.submittedAt ? new Date(r.submittedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : '—'}</span>
+          </div>
+        </div>
+        <div class="request-card-badges">
+          <span class="priority-badge ${r.priority || 'medium'}">${PRIORITY_LABELS[r.priority] || r.priority}</span>
+          <span class="status-badge st-${r.status}">${STATUS_LABELS[r.status] || r.status}</span>
+        </div>
+      </div>
+      <div class="request-card-desc">${escHtml(r.description || '')}</div>
+    </div>
+  `).join('') + '</div>';
 }
 
 // ══════════════════════════════════════════════════════
