@@ -562,6 +562,99 @@
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   }
   .request-card-badges{display:flex;gap:6px;flex-shrink:0;}
+
+  /* ── CLOSE & REPORT (vessel-side) ── */
+  .request-card-footer{
+    display:flex;justify-content:flex-end;
+    margin-top:10px;padding-top:10px;
+    border-top:1px dashed var(--border);
+  }
+  .close-report-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:7px 14px;
+    background:white;
+    color:var(--teal);
+    border:1.5px solid var(--teal);
+    border-radius:var(--radius);
+    font-family:'DM Sans',sans-serif;
+    font-size:11.5px;font-weight:600;
+    letter-spacing:.02em;
+    cursor:pointer;
+    transition:all .15s;
+  }
+  .close-report-btn:hover{background:var(--teal);color:white;}
+  .close-report-btn svg{width:13px;height:13px;fill:currentColor;}
+
+  /* ── CLOSE / REPORT MODAL ── */
+  .crm-overlay{
+    display:none;
+    position:fixed;inset:0;
+    background:rgba(17,24,39,.55);
+    z-index:100;
+    align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .crm-overlay.open{display:flex;}
+  .crm-modal{
+    background:white;
+    border-radius:14px;
+    width:100%;max-width:560px;
+    max-height:90vh;
+    display:flex;flex-direction:column;
+    box-shadow:var(--card-shadow);
+    overflow:hidden;
+  }
+  .crm-header{
+    padding:20px 24px 16px;
+    border-bottom:1px solid var(--border);
+    flex-shrink:0;
+  }
+  .crm-title{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:22px;letter-spacing:1.2px;
+    color:var(--text-pri);
+    display:flex;align-items:center;gap:9px;
+  }
+  .crm-title svg{width:19px;height:19px;fill:var(--teal);}
+  .crm-subtitle{font-size:12px;color:var(--text-sec);margin-top:4px;line-height:1.5;}
+  .crm-refline{
+    font-family:'DM Mono',monospace;font-size:11px;color:var(--text-dim);
+    margin-top:8px;
+  }
+  .crm-body{padding:20px 24px;overflow-y:auto;flex:1;min-height:0;}
+  .crm-footer{
+    padding:16px 24px;
+    border-top:1px solid var(--border);
+    background:var(--surface2);
+    display:flex;justify-content:flex-end;gap:10px;
+    flex-shrink:0;
+  }
+  .crm-cancel-btn{
+    padding:10px 20px;
+    background:white;
+    color:var(--text-sec);
+    border:1.5px solid var(--border);
+    border-radius:var(--radius);
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;font-weight:600;
+    cursor:pointer;
+  }
+  .crm-cancel-btn:hover{border-color:var(--text-dim);}
+  .crm-confirm-btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:10px 22px;
+    background:var(--teal);
+    color:white;
+    border:none;
+    border-radius:var(--radius);
+    font-family:'DM Sans',sans-serif;
+    font-size:13px;font-weight:600;
+    cursor:pointer;
+    transition:all .15s;
+  }
+  .crm-confirm-btn:hover{background:var(--teal-dim);}
+  .crm-confirm-btn:disabled{opacity:.55;cursor:not-allowed;}
+  .crm-confirm-btn svg{width:14px;height:14px;fill:currentColor;}
 </style>
 </head>
 <body>
@@ -779,6 +872,49 @@
 
 <!-- Toast notification -->
 <div class="toast" id="toast"></div>
+
+<!-- ═══ CLOSE & REPORT MODAL ═══ -->
+<div class="crm-overlay" id="crmOverlay">
+  <div class="crm-modal">
+    <div class="crm-header">
+      <div class="crm-title">
+        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-1 15l-4-4 1.41-1.41L11 13.17l6.59-6.59L19 8l-8 8z"/></svg>
+        Close &amp; Report Work
+      </div>
+      <div class="crm-subtitle">Confirm this item is complete and describe the work performed. This will close the request and notify the Fleet Manager.</div>
+      <div class="crm-refline" id="crmRefLine">—</div>
+    </div>
+    <div class="crm-body">
+      <div class="form-group">
+        <label>Work Performed <span class="req">*</span></label>
+        <textarea class="form-control" id="crmWorkDone" rows="4" placeholder="Describe all work performed, repairs made, and procedures followed…"></textarea>
+        <div class="field-error" id="errCrmWorkDone">Please describe the work performed.</div>
+      </div>
+      <div class="form-group">
+        <label>Parts / Materials Used</label>
+        <textarea class="form-control" id="crmPartsUsed" rows="2" placeholder="List any parts replaced or materials consumed (include part numbers if applicable)…"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Closed / Reported By <span class="req">*</span></label>
+          <input type="text" class="form-control" id="crmClosedBy" placeholder="Full name">
+          <div class="field-error" id="errCrmClosedBy">Please enter your name.</div>
+        </div>
+        <div class="form-group">
+          <label>Additional Remarks</label>
+          <input type="text" class="form-control" id="crmRemarks" placeholder="Follow-up items, observations…">
+        </div>
+      </div>
+    </div>
+    <div class="crm-footer">
+      <button class="crm-cancel-btn" onclick="closeCloseModal()">Cancel</button>
+      <button class="crm-confirm-btn" id="crmConfirmBtn" onclick="confirmCloseFromVessel()">
+        <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+        Close &amp; Save
+      </button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ══════════════════════════════════════════════════════
@@ -1110,6 +1246,8 @@ function resetForm() {
 // ══════════════════════════════════════════════════════
 let trackListenerRef = null;   // current Firebase ref being listened to
 let trackListenerVessel = null;
+let openRecordsCache = [];     // most recent list of open records for this vessel (for close modal lookups)
+let _pendingCloseId = null;    // id of the request currently open in the close modal
 
 // Requests in these statuses are considered "open" / still in progress.
 // 'closed' and 'archived' are excluded — those items are done.
@@ -1176,6 +1314,7 @@ function attachTrackListener(vesselName) {
     const val = snap.val() || {};
     const records = Object.values(val).filter(r => OPEN_STATUSES.includes(r.status));
     records.sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+    openRecordsCache = records;
     renderRequestList(records);
     setStatusTabCount(records.length);
   }, err => {
@@ -1226,8 +1365,102 @@ function renderRequestList(records) {
         </div>
       </div>
       <div class="request-card-desc">${escHtml(r.description || '')}</div>
+      <div class="request-card-footer">
+        <button class="close-report-btn" onclick="openCloseModal('${escHtml(r.id)}')">
+          <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          Close &amp; Report
+        </button>
+      </div>
     </div>
   `).join('') + '</div>';
+}
+
+// ══════════════════════════════════════════════════════
+//  CLOSE & REPORT (vessel-side close-out)
+//  Writes to the same fleet_repairs/{id} fields the office
+//  dashboard's service-ticket dialog uses, so closed items
+//  show up correctly in the Fleet Manager's records.
+// ══════════════════════════════════════════════════════
+function openCloseModal(id) {
+  const req = openRecordsCache.find(r => r.id === id);
+  if (!req) { showToast('Could not find that request — try refreshing.', 'error'); return; }
+  _pendingCloseId = id;
+
+  document.getElementById('crmRefLine').textContent =
+    'REF: ' + (req.id || '').toUpperCase() + '  ·  ' + (req.item || 'Untitled item');
+
+  document.getElementById('crmWorkDone').value  = '';
+  document.getElementById('crmPartsUsed').value = '';
+  document.getElementById('crmClosedBy').value  = '';
+  document.getElementById('crmRemarks').value   = '';
+  ['crmWorkDone','crmClosedBy'].forEach(fid => document.getElementById(fid).classList.remove('error'));
+  document.getElementById('errCrmWorkDone').classList.remove('visible');
+  document.getElementById('errCrmClosedBy').classList.remove('visible');
+
+  document.getElementById('crmOverlay').classList.add('open');
+}
+
+function closeCloseModal() {
+  document.getElementById('crmOverlay').classList.remove('open');
+  _pendingCloseId = null;
+}
+
+function confirmCloseFromVessel() {
+  if (!_pendingCloseId) return;
+
+  const workDone  = document.getElementById('crmWorkDone').value.trim();
+  const closedBy  = document.getElementById('crmClosedBy').value.trim();
+  const partsUsed = document.getElementById('crmPartsUsed').value.trim();
+  const remarks   = document.getElementById('crmRemarks').value.trim();
+
+  let valid = true;
+  if (!workDone) {
+    document.getElementById('crmWorkDone').classList.add('error');
+    document.getElementById('errCrmWorkDone').classList.add('visible');
+    valid = false;
+  }
+  if (!closedBy) {
+    document.getElementById('crmClosedBy').classList.add('error');
+    document.getElementById('errCrmClosedBy').classList.add('visible');
+    valid = false;
+  }
+  if (!valid) return;
+
+  const id = _pendingCloseId;
+  const closedAt = Date.now();
+  const btn = document.getElementById('crmConfirmBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Saving…';
+
+  if (!db) {
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg> Close &amp; Save';
+    showToast('No database connection — can\'t close this item while offline.', 'error');
+    return;
+  }
+
+  const updates = {};
+  updates[REPAIRS_PATH + '/' + id + '/status']          = 'closed';
+  updates[REPAIRS_PATH + '/' + id + '/closedAt']        = closedAt;
+  updates[REPAIRS_PATH + '/' + id + '/serviceNotes']    = workDone;
+  updates[REPAIRS_PATH + '/' + id + '/partsUsed']       = partsUsed;
+  updates[REPAIRS_PATH + '/' + id + '/closedByTech']    = closedBy;
+  updates[REPAIRS_PATH + '/' + id + '/closingRemarks']  = remarks;
+  updates[REPAIRS_PATH + '/' + id + '/closedFromVessel'] = true;
+
+  db.ref().update(updates)
+    .then(() => {
+      showToast('🔒 Request closed & work report saved.', 'success');
+      closeCloseModal();
+    })
+    .catch(err => {
+      console.warn('Close failed:', err);
+      showToast('Could not save — please check your connection and try again.', 'error');
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg> Close &amp; Save';
+    });
 }
 
 // ══════════════════════════════════════════════════════
