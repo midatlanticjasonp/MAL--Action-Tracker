@@ -496,6 +496,27 @@
   /* ── STATUS VIEW ── */
   .status-view{padding:22px 32px 32px;display:none;}
   .status-view.visible{display:block;}
+  .status-filter-row{
+    display:flex;gap:8px;
+    margin-bottom:16px;
+  }
+  .status-filter-btn{
+    padding:7px 16px;
+    background:var(--surface2);
+    color:var(--text-sec);
+    border:1.5px solid var(--border);
+    border-radius:20px;
+    font-family:'DM Sans',sans-serif;
+    font-size:12.5px;font-weight:600;
+    cursor:pointer;
+    transition:all .15s;
+  }
+  .status-filter-btn:hover{border-color:var(--teal);color:var(--teal);}
+  .status-filter-btn.active{
+    background:var(--teal);
+    border-color:var(--teal);
+    color:white;
+  }
   .status-vessel-row{
     display:flex;
     gap:12px;
@@ -537,6 +558,7 @@
   .status-badge.st-pending{background:rgba(217,119,6,.1);color:var(--amber);}
   .status-badge.st-approved{background:rgba(37,99,235,.1);color:var(--blue);}
   .status-badge.st-hold{background:rgba(75,85,99,.1);color:var(--text-sec);}
+  .status-badge.st-closed{background:rgba(22,163,74,.1);color:#16a34a;}
 
   .request-list{display:flex;flex-direction:column;gap:10px;}
   .request-card{
@@ -840,6 +862,10 @@
         <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
       </button>
     </div>
+    <div class="status-filter-row" id="statusFilterRow" style="display:none;">
+      <button class="status-filter-btn active" id="filterBtnOpen" onclick="setStatusFilter('open')">Open</button>
+      <button class="status-filter-btn" id="filterBtnClosed" onclick="setStatusFilter('closed')">Closed</button>
+    </div>
     <div id="requestListWrap">
       <div class="status-empty">
         <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
@@ -1041,6 +1067,42 @@
         <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
         Close &amp; Save
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ VIEW CLOSED REPORT MODAL (read-only) ═══ -->
+<div class="crm-overlay" id="vrmOverlay">
+  <div class="crm-modal">
+    <div class="crm-header">
+      <div class="crm-title">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        Closed Item Report
+      </div>
+      <div class="crm-subtitle">This request has been closed. Details below are read-only.</div>
+    </div>
+    <div class="crm-body">
+      <div class="crm-orig-panel">
+        <div class="crm-orig-label">Original Request</div>
+        <div class="crm-orig-meta" id="vrmOrigMeta"></div>
+        <div class="crm-orig-desc" id="vrmOrigDesc">—</div>
+      </div>
+      <div class="crm-orig-panel">
+        <div class="crm-orig-label">Work Performed</div>
+        <div class="crm-orig-meta" id="vrmCloseMeta"></div>
+        <div class="crm-orig-desc" id="vrmWorkDone">—</div>
+      </div>
+      <div class="crm-orig-panel" id="vrmPartsPanel" style="display:none;">
+        <div class="crm-orig-label">Parts / Materials Used</div>
+        <div class="crm-orig-desc" id="vrmPartsUsed">—</div>
+      </div>
+      <div class="crm-orig-panel" id="vrmRemarksPanel" style="display:none;">
+        <div class="crm-orig-label">Additional Remarks</div>
+        <div class="crm-orig-desc" id="vrmRemarks">—</div>
+      </div>
+    </div>
+    <div class="crm-footer">
+      <button class="crm-cancel-btn" onclick="closeViewReportModal()">Close</button>
     </div>
   </div>
 </div>
@@ -1413,6 +1475,8 @@ function resetForm() {
 let trackListenerRef = null;   // current Firebase ref being listened to
 let trackListenerVessel = null;
 let openRecordsCache = [];     // most recent list of open records for this vessel (for close modal lookups)
+let closedRecordsCache = [];   // most recent list of closed records for this vessel (for view-report lookups)
+let currentStatusFilter = 'open'; // 'open' | 'closed' — which list is currently shown
 let _pendingCloseId = null;    // id of the request currently open in the close modal
 
 // Requests in these statuses are considered "open" / still in progress.
@@ -1443,6 +1507,7 @@ function onTrackVesselChange(isManualRefresh) {
   if (!v) {
     detachTrackListener();
     document.getElementById('requestListWrap').innerHTML = emptyStateHtml('Select your vessel above to view its open repair requests.');
+    document.getElementById('statusFilterRow').style.display = 'none';
     setStatusTabCount(null);
     return;
   }
@@ -1478,11 +1543,16 @@ function attachTrackListener(vesselName) {
   trackListenerRef = db.ref(REPAIRS_PATH).orderByChild('vessel').equalTo(vesselName);
   trackListenerRef.on('value', snap => {
     const val = snap.val() || {};
-    const records = Object.values(val).filter(r => OPEN_STATUSES.includes(r.status));
-    records.sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
-    openRecordsCache = records;
-    renderRequestList(records);
-    setStatusTabCount(records.length);
+    const all = Object.values(val);
+    const openRecs = all.filter(r => OPEN_STATUSES.includes(r.status));
+    const closedRecs = all.filter(r => r.status === 'closed');
+    openRecs.sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+    closedRecs.sort((a, b) => (b.closedAt || b.submittedAt || 0) - (a.closedAt || a.submittedAt || 0));
+    openRecordsCache = openRecs;
+    closedRecordsCache = closedRecs;
+    document.getElementById('statusFilterRow').style.display = 'flex';
+    renderCurrentFilter();
+    setStatusTabCount(openRecs.length);
   }, err => {
     console.warn('Track status listener failed:', err);
     document.getElementById('requestListWrap').innerHTML =
@@ -1503,13 +1573,31 @@ function setStatusTabCount(n) {
   badge.style.display = '';
 }
 
-const STATUS_LABELS = { pending: 'Pending Review', approved: 'Approved', hold: 'On Hold' };
+const STATUS_LABELS = { pending: 'Pending Review', approved: 'Approved', hold: 'On Hold', closed: 'Closed' };
 const PRIORITY_LABELS = { critical: '⚑ Critical', high: '▲ High', medium: '■ Medium', low: '▼ Low' };
 
-function renderRequestList(records) {
+function setStatusFilter(filter) {
+  currentStatusFilter = filter;
+  document.getElementById('filterBtnOpen').classList.toggle('active', filter === 'open');
+  document.getElementById('filterBtnClosed').classList.toggle('active', filter === 'closed');
+  renderCurrentFilter();
+}
+
+function renderCurrentFilter() {
+  if (currentStatusFilter === 'closed') {
+    renderRequestList(closedRecordsCache, 'closed');
+  } else {
+    renderRequestList(openRecordsCache, 'open');
+  }
+}
+
+function renderRequestList(records, mode) {
+  mode = mode || 'open';
   const wrap = document.getElementById('requestListWrap');
   if (!records.length) {
-    wrap.innerHTML = emptyStateHtml('No open repair requests for this vessel right now. All caught up! ✅');
+    wrap.innerHTML = mode === 'closed'
+      ? emptyStateHtml('No closed repair requests for this vessel yet.')
+      : emptyStateHtml('No open repair requests for this vessel right now. All caught up! ✅');
     return;
   }
   wrap.innerHTML = '<div class="request-list">' + records.map(r => `
@@ -1532,10 +1620,16 @@ function renderRequestList(records) {
       </div>
       <div class="request-card-desc">${escHtml(r.description || '')}</div>
       <div class="request-card-footer">
-        <button class="close-report-btn" onclick="openCloseModal('${escHtml(r.id)}')">
-          <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-          Close &amp; Report
-        </button>
+        ${mode === 'closed'
+          ? `<button class="close-report-btn" onclick="openViewReportModal('${escHtml(r.id)}')">
+               <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>
+               View Report
+             </button>`
+          : `<button class="close-report-btn" onclick="openCloseModal('${escHtml(r.id)}')">
+               <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+               Close &amp; Report
+             </button>`
+        }
       </div>
     </div>
   `).join('') + '</div>';
@@ -1588,6 +1682,61 @@ function openCloseModal(id) {
 function closeCloseModal() {
   document.getElementById('crmOverlay').classList.remove('open');
   _pendingCloseId = null;
+}
+
+// ══════════════════════════════════════════════════════
+//  VIEW CLOSED REPORT (read-only)
+// ══════════════════════════════════════════════════════
+function openViewReportModal(id) {
+  const req = closedRecordsCache.find(r => r.id === id);
+  if (!req) { showToast('Could not find that record — try refreshing.', 'error'); return; }
+
+  document.getElementById('vrmOrigMeta').innerHTML = `
+    <span><b>${escHtml(req.item || 'Untitled item')}</b></span>
+    <span>·</span>
+    <span>${escHtml(req.vessel || '—')}</span>
+    <span>·</span>
+    <span>${escHtml(req.department || '—')}</span>
+    <span>·</span>
+    <span>${PRIORITY_LABELS[req.priority] || escHtml(req.priority || '—')} priority</span>
+    ${req.safetyRisk ? '<span>· <b style="color:#c0392b;">⚠ Safety Risk</b></span>' : ''}
+    <span>·</span>
+    <span>Reported by <b>${escHtml(req.officer || '—')}</b></span>
+    <span>·</span>
+    <span>${req.submittedAt ? new Date(req.submittedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : '—'}</span>
+    <span>·</span>
+    <span>REF ${escHtml((req.id || '').toUpperCase())}</span>
+  `;
+  document.getElementById('vrmOrigDesc').textContent = req.description || '(No description provided)';
+
+  document.getElementById('vrmCloseMeta').innerHTML = `
+    <span>Closed by <b>${escHtml(req.closedByTech || '—')}</b></span>
+    <span>·</span>
+    <span>${req.closedAt ? new Date(req.closedAt).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : '—'}</span>
+  `;
+  document.getElementById('vrmWorkDone').textContent = req.serviceNotes || '(No work summary provided)';
+
+  const partsPanel = document.getElementById('vrmPartsPanel');
+  if (req.partsUsed) {
+    partsPanel.style.display = '';
+    document.getElementById('vrmPartsUsed').textContent = req.partsUsed;
+  } else {
+    partsPanel.style.display = 'none';
+  }
+
+  const remarksPanel = document.getElementById('vrmRemarksPanel');
+  if (req.closingRemarks) {
+    remarksPanel.style.display = '';
+    document.getElementById('vrmRemarks').textContent = req.closingRemarks;
+  } else {
+    remarksPanel.style.display = 'none';
+  }
+
+  document.getElementById('vrmOverlay').classList.add('open');
+}
+
+function closeViewReportModal() {
+  document.getElementById('vrmOverlay').classList.remove('open');
 }
 
 function confirmCloseFromVessel() {
