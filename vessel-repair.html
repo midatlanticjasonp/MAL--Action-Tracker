@@ -655,9 +655,109 @@
   .crm-confirm-btn:hover{background:var(--teal-dim);}
   .crm-confirm-btn:disabled{opacity:.55;cursor:not-allowed;}
   .crm-confirm-btn svg{width:14px;height:14px;fill:currentColor;}
+
+  /* ── VESSEL PIN LOCK ── */
+  .lock-overlay{
+    position:fixed;inset:0;
+    background:linear-gradient(160deg,#0b1b26,#122a38);
+    z-index:200;
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .lock-overlay.hidden{display:none;}
+  .lock-card{
+    background:white;
+    border-radius:16px;
+    width:100%;max-width:400px;
+    padding:32px 28px;
+    box-shadow:0 20px 60px rgba(0,0,0,.35);
+  }
+  .lock-icon{
+    width:44px;height:44px;
+    margin:0 auto 14px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--teal-pale,#e6f4f3);
+    border-radius:50%;
+  }
+  .lock-icon svg{width:22px;height:22px;fill:var(--teal);}
+  .lock-title{
+    font-family:'Bebas Neue',sans-serif;
+    font-size:24px;letter-spacing:1.2px;
+    color:var(--text-pri);
+    text-align:center;
+  }
+  .lock-subtitle{
+    font-size:12.5px;color:var(--text-sec);
+    text-align:center;margin-top:6px;margin-bottom:22px;
+    line-height:1.5;
+  }
+  .lock-error{
+    display:none;
+    font-size:12px;color:#c0392b;
+    background:#fdecea;border:1px solid #f5c6c0;
+    border-radius:8px;padding:8px 12px;
+    margin-top:12px;text-align:center;
+  }
+  .lock-error.visible{display:block;}
+  .lock-btn{
+    width:100%;
+    margin-top:16px;
+    padding:12px;
+    background:var(--teal);
+    color:white;
+    border:none;border-radius:var(--radius);
+    font-family:'DM Sans',sans-serif;
+    font-size:14px;font-weight:700;
+    letter-spacing:.02em;
+    cursor:pointer;
+  }
+  .lock-btn:hover{background:var(--teal-dim);}
+  .lock-vessel-badge{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:11px;
+    font-family:'DM Sans',sans-serif;
+    font-weight:700;font-size:14px;
+    color:var(--text-pri);
+    margin-bottom:14px;
+  }
+  .vessel-lock-tag{
+    display:inline-flex;align-items:center;gap:5px;
+    font-size:10.5px;color:var(--text-dim);
+    cursor:pointer;text-decoration:underline;
+    background:none;border:none;padding:0;
+    font-family:'DM Sans',sans-serif;
+  }
 </style>
 </head>
 <body>
+
+<!-- ═══ VESSEL PIN LOCK SCREEN ═══ -->
+<div class="lock-overlay" id="lockOverlay">
+  <div class="lock-card">
+    <div class="lock-icon">
+      <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 10c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+    </div>
+    <div class="lock-title">Vessel Access</div>
+    <div class="lock-subtitle" id="lockSubtitle">Select your vessel and enter its access PIN to continue.</div>
+
+    <div id="lockVesselFixed" class="lock-vessel-badge" style="display:none;"></div>
+    <div class="form-group" id="lockVesselPickerWrap">
+      <label>Vessel</label>
+      <select class="form-control" id="lockVesselSelect">
+        <option value="">— Select vessel —</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>Access PIN</label>
+      <input type="password" inputmode="numeric" class="form-control" id="lockPinInput" placeholder="••••" maxlength="8">
+    </div>
+    <div class="lock-error" id="lockError">Incorrect PIN for that vessel. Please try again.</div>
+    <button class="lock-btn" onclick="attemptUnlock()">Unlock</button>
+  </div>
+</div>
 
 <!-- Page header -->
 <div class="page-header">
@@ -669,6 +769,9 @@
     <div class="conn-dot" id="connDot"></div>
     <span id="connLabel">Connecting…</span>
   </div>
+  <button class="vessel-lock-tag" id="switchVesselTag" style="display:none;" onclick="switchVessel()">
+    <span id="switchVesselLabel"></span> · switch vessel
+  </button>
 </div>
 
 <!-- Main form card -->
@@ -991,6 +1094,27 @@ const FALLBACK_VESSELS = [
   'MV Sentry', 'MV Sentinel', 'MV Scout'
 ];
 
+// ══════════════════════════════════════════════════════
+//  VESSEL PIN LOCK
+//  Lightweight device-level access boundary — NOT a real
+//  security mechanism (anyone who reads this file's source
+//  can see it isn't enforced server-side). It's meant to
+//  stop casual mix-ups / browsing between vessels on a
+//  shared office computer, not a determined bypass.
+//  ⚠️ CHANGE THESE PINS before deploying to your vessels.
+// ══════════════════════════════════════════════════════
+const VESSEL_PINS = {
+  'MV Endeavor':  '1471',
+  'MV Mariner':   '2582',
+  'MV Navigator': '3693',
+  'MV Sentry':    '4714',
+  'MV Sentinel':  '5825',
+  'MV Scout':     '6936'
+};
+const VESSEL_LOCK_KEY = 'vesselRepairLock_v1';
+let unlockedVessel = null;   // the vessel this device is currently unlocked for
+let urlLockedVessel = null;  // vessel forced via ?vessel= URL param, if any
+
 function loadVessels() {
   const sel = document.getElementById('rfVessel');
   const trackSel = document.getElementById('trackVessel');
@@ -1000,6 +1124,16 @@ function loadVessels() {
       names.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
     sel.innerHTML = opts;
     trackSel.innerHTML = opts;
+
+    // If this device is locked to a vessel, force both selects to it
+    // and disable switching so a vessel only ever sees its own data.
+    if (unlockedVessel) {
+      sel.value = unlockedVessel;
+      sel.disabled = true;
+      trackSel.value = unlockedVessel;
+      trackSel.disabled = true;
+      onTrackVesselChange();
+    }
   }
 
   if (!db) { populate(FALLBACK_VESSELS); return; }
@@ -1113,6 +1247,12 @@ function submitRepairRequest() {
   }
 
   const vessel   = document.getElementById('rfVessel').value.trim();
+
+  if (unlockedVessel && vessel !== unlockedVessel) {
+    showToast('You can only submit requests for ' + unlockedVessel + '.', 'error');
+    return;
+  }
+
   const dept     = document.getElementById('rfDept').value;
   const item     = document.getElementById('rfItem').value.trim();
   const desc     = document.getElementById('rfDesc').value.trim();
@@ -1216,7 +1356,7 @@ function printCopy() {
 //  RESET
 // ══════════════════════════════════════════════════════
 function resetForm() {
-  document.getElementById('rfVessel').value  = '';
+  document.getElementById('rfVessel').value  = unlockedVessel || '';
   document.getElementById('rfDept').value    = '';
   document.getElementById('rfItem').value    = '';
   document.getElementById('rfDesc').value    = '';
@@ -1384,6 +1524,10 @@ function renderRequestList(records) {
 function openCloseModal(id) {
   const req = openRecordsCache.find(r => r.id === id);
   if (!req) { showToast('Could not find that request — try refreshing.', 'error'); return; }
+  if (unlockedVessel && req.vessel !== unlockedVessel) {
+    showToast('You can only close items for ' + unlockedVessel + '.', 'error');
+    return;
+  }
   _pendingCloseId = id;
 
   document.getElementById('crmRefLine').textContent =
@@ -1427,6 +1571,12 @@ function confirmCloseFromVessel() {
   if (!valid) return;
 
   const id = _pendingCloseId;
+  const ownerCheck = openRecordsCache.find(r => r.id === id);
+  if (unlockedVessel && ownerCheck && ownerCheck.vessel !== unlockedVessel) {
+    showToast('You can only close items for ' + unlockedVessel + '.', 'error');
+    closeCloseModal();
+    return;
+  }
   const closedAt = Date.now();
   const btn = document.getElementById('crmConfirmBtn');
   btn.disabled = true;
@@ -1464,8 +1614,97 @@ function confirmCloseFromVessel() {
 }
 
 // ══════════════════════════════════════════════════════
+//  VESSEL LOCK SCREEN LOGIC
+// ══════════════════════════════════════════════════════
+function initVesselLock() {
+  // Populate the lock screen's vessel dropdown
+  const lockSel = document.getElementById('lockVesselSelect');
+  lockSel.innerHTML = '<option value="">— Select vessel —</option>' +
+    FALLBACK_VESSELS.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+
+  // Check for a ?vessel= URL param that pins the picker to one vessel
+  const params = new URLSearchParams(window.location.search);
+  const urlVessel = params.get('vessel');
+  if (urlVessel && VESSEL_PINS.hasOwnProperty(urlVessel)) {
+    urlLockedVessel = urlVessel;
+    document.getElementById('lockVesselPickerWrap').style.display = 'none';
+    const badge = document.getElementById('lockVesselFixed');
+    badge.style.display = 'flex';
+    badge.textContent = urlVessel;
+    document.getElementById('lockSubtitle').textContent =
+      'Enter the access PIN for ' + urlVessel + ' to continue.';
+  }
+
+  // Already unlocked on this device?
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem(VESSEL_LOCK_KEY) || 'null'); } catch(e) {}
+  if (stored && stored.vessel && VESSEL_PINS.hasOwnProperty(stored.vessel) &&
+      (!urlLockedVessel || stored.vessel === urlLockedVessel)) {
+    vesselUnlocked(stored.vessel);
+    return;
+  }
+
+  // Otherwise show the lock screen and wait for attemptUnlock()
+  document.getElementById('lockPinInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') attemptUnlock();
+  });
+}
+
+function attemptUnlock() {
+  const vessel = urlLockedVessel || document.getElementById('lockVesselSelect').value;
+  const pin = document.getElementById('lockPinInput').value.trim();
+  const errEl = document.getElementById('lockError');
+
+  if (!vessel) {
+    errEl.textContent = 'Please select your vessel.';
+    errEl.classList.add('visible');
+    return;
+  }
+  if (!VESSEL_PINS.hasOwnProperty(vessel) || VESSEL_PINS[vessel] !== pin) {
+    errEl.textContent = 'Incorrect PIN for that vessel. Please try again.';
+    errEl.classList.add('visible');
+    document.getElementById('lockPinInput').value = '';
+    return;
+  }
+
+  errEl.classList.remove('visible');
+  try {
+    localStorage.setItem(VESSEL_LOCK_KEY, JSON.stringify({ vessel, ts: Date.now() }));
+  } catch(e) {}
+  vesselUnlocked(vessel);
+}
+
+function vesselUnlocked(vessel) {
+  unlockedVessel = vessel;
+  document.getElementById('lockOverlay').classList.add('hidden');
+  document.getElementById('switchVesselTag').style.display = 'inline-flex';
+  document.getElementById('switchVesselLabel').textContent = vessel;
+
+  // If vessel selects were already populated before unlock happened,
+  // lock them now. (loadVessels() re-applies this too if it runs after.)
+  const sel = document.getElementById('rfVessel');
+  const trackSel = document.getElementById('trackVessel');
+  if (sel && sel.options.length > 1) {
+    sel.value = vessel;
+    sel.disabled = true;
+  }
+  if (trackSel && trackSel.options.length > 1) {
+    trackSel.value = vessel;
+    trackSel.disabled = true;
+    onTrackVesselChange();
+  }
+}
+
+function switchVessel() {
+  if (!confirm('Switch to a different vessel on this device? You will need that vessel\'s access PIN.')) return;
+  try { localStorage.removeItem(VESSEL_LOCK_KEY); } catch(e) {}
+  window.location.reload();
+}
+
+// ══════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════
+initVesselLock();
 initFirebase();
 loadVessels();
 </script>
