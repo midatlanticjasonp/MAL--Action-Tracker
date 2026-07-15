@@ -1643,6 +1643,9 @@ document.addEventListener('keydown',e=>{
 
 let _knownRepairIds = new Set();
 let repairFilter = { status: 'all', priority: null };
+// Tracks which repair detail rows are expanded so re-renders (e.g. after adding
+// a status update) don't collapse the panel the user is actively working in.
+let _openRepairDetailIds = new Set();
 
 function showRepairToast(msg, variant) {
   var t = document.getElementById('toast');
@@ -2283,6 +2286,9 @@ function deleteCert(id) {
     status:      'pending' | 'approved' | 'hold' | 'archived'
     submittedAt: number  (Date.now() timestamp)
     convertedTaskId: string | null  (set when approved → task)
+    statusUpdates: [{ id, ts: number (Date.now()), text: string }]  (dated progress log,
+                    appended to while the task is open; compiled into "Work Carried Out"
+                    on the final report / service ticket)
   }
 ──────────────────────────────────────────────────────── */
 
@@ -2343,7 +2349,8 @@ function submitRepairRequest() {
     priority, safetyRisk: safety, officer,
     status:      'pending',
     submittedAt: Date.now(),
-    convertedTaskId: null
+    convertedTaskId: null,
+    statusUpdates: []
   };
 
   const btn = document.getElementById('repairSubmitBtn');
@@ -2524,7 +2531,7 @@ function renderRepairTable() {
       <td>${STAT_MAP[r.status]||r.status}</td>
       <td><div class="repair-actions">${approveBtn}${holdBtn}${closeBtn}${archiveBtn}${printBtn}${deleteBtn}</div></td>
     </tr>
-    <tr class="repair-detail-row" id="rdetail-${r.id}" style="display:none;">
+    <tr class="repair-detail-row" id="rdetail-${r.id}" style="display:${_openRepairDetailIds.has(r.id) ? 'table-row' : 'none'};">
       <td colspan="11" class="repair-detail-cell">
         <div class="repair-detail-inner">
           <div class="rdl-item"><div class="rdl-label">Tracking #</div><div class="rdl-val" style="font-family:var(--font-mono,'DM Mono',monospace);font-weight:700;color:var(--teal);">${escHtml(r.trackingId)}</div></div>
@@ -2538,16 +2545,105 @@ function renderRepairTable() {
           ${r.convertedTaskId?`<div class="rdl-item"><div class="rdl-label">Linked Task</div><div class="rdl-val" style="color:var(--teal);font-weight:600;">Linked to project task ✓ (ID: ${r.convertedTaskId.slice(0,8)}…)</div></div>`:''}
           ${r.convertedAssignee?`<div class="rdl-item"><div class="rdl-label">Assigned Owner</div><div class="rdl-val">${escHtml(r.convertedAssignee)}</div></div>`:''}
           ${r.closedAt?`<div class="rdl-item"><div class="rdl-label">Closed</div><div class="rdl-val" style="color:var(--text-sec);font-size:12px;">${new Date(r.closedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div></div>`:''}
+          <div class="rdl-item" style="grid-column:1/-1;">
+            ${renderStatusUpdatesBlock(r)}
+          </div>
         </div>
       </td>
     </tr>`;
   }).join('');
 }
 
+// ── Status Updates (dated progress log for open tasks) ─────────
+// Renders the history + "add update" input inside a repair's detail panel.
+function renderStatusUpdatesBlock(r) {
+  const updates = (r.statusUpdates || []).slice().sort((a,b)=>a.ts-b.ts);
+  const isOpen = r.status !== 'closed' && r.status !== 'archived';
+
+  const historyHtml = updates.length
+    ? `<div class="status-update-list">${updates.map(u => `
+        <div class="status-update-item">
+          <div class="status-update-date">${formatUpdateTimestamp(u.ts)}</div>
+          <div class="status-update-text">${escHtml(u.text)}</div>
+          ${isOpen ? `<button class="status-update-del" title="Remove update" onclick="event.stopPropagation();deleteStatusUpdate('${r.id}','${u.id}')">✕</button>` : ''}
+        </div>`).join('')}</div>`
+    : `<div class="status-update-empty">No status updates logged yet.</div>`;
+
+  const addRowHtml = isOpen ? `
+      <div class="status-update-add-row" onclick="event.stopPropagation();">
+        <input type="text" class="status-update-input" id="su-input-${r.id}"
+               placeholder="e.g. Parts cleared customs, work underway…"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addStatusUpdate('${r.id}');}">
+        <button class="btn ract-btn ract-approve" style="padding:6px 14px;" onclick="addStatusUpdate('${r.id}')">+ Add Update</button>
+      </div>` : '';
+
+  return `
+    <div class="rdl-label" style="margin-bottom:6px;">Status Updates / Progress Log</div>
+    ${historyHtml}
+    ${addRowHtml}
+  `;
+}
+
+// Friendly "15 Jul, 10:30" style timestamp for status update entries
+function formatUpdateTimestamp(ts) {
+  return new Date(ts).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// Append a new dated status update to a repair request
+function addStatusUpdate(repairId) {
+  const req = (state.repairRequests || []).find(r => r.id === repairId);
+  if (!req) return;
+  const input = document.getElementById('su-input-' + repairId);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  if (!req.statusUpdates) req.statusUpdates = [];
+  const update = { id: uid(), ts: Date.now(), text };
+  req.statusUpdates.push(update);
+
+  if (db) db.ref('fleet_repairs/' + req.id + '/statusUpdates').set(req.statusUpdates);
+  saveState();
+
+  input.value = '';
+  _openRepairDetailIds.add(repairId); // keep the panel open after re-render
+  if (currentView === 'repairs') renderRepairView();
+  showRepairToast('📝 Status update logged for ' + (req.trackingId || req.item || 'task'), 'teal');
+}
+
+// Remove a status update (e.g. to correct a mistaken entry)
+function deleteStatusUpdate(repairId, updateId) {
+  const req = (state.repairRequests || []).find(r => r.id === repairId);
+  if (!req || !req.statusUpdates) return;
+  req.statusUpdates = req.statusUpdates.filter(u => u.id !== updateId);
+
+  if (db) db.ref('fleet_repairs/' + req.id + '/statusUpdates').set(req.statusUpdates);
+  saveState();
+
+  _openRepairDetailIds.add(repairId);
+  if (currentView === 'repairs') renderRepairView();
+}
+
+// Compile the dated status-update log (+ any final closing service notes) into
+// the chronological, bullet-point text that populates "Work Carried Out" on
+// the service ticket / final report.
+function buildWorkCarriedOutText(req) {
+  const updates = (req.statusUpdates || []).slice().sort((a,b)=>a.ts-b.ts);
+  const lines = updates.map(u => `• ${formatUpdateTimestamp(u.ts)} — ${u.text}`);
+  if (req.serviceNotes && req.serviceNotes.trim()) {
+    const label = req.closedAt ? `Final Summary (${formatUpdateTimestamp(req.closedAt)})` : 'Summary';
+    lines.push(`• ${label} — ${req.serviceNotes.trim()}`);
+  }
+  return lines.join('\n');
+}
+
 function toggleRepairDetail(id) {
   const row = document.getElementById('rdetail-'+id);
   if (!row) return;
-  row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+  const willOpen = row.style.display === 'none';
+  row.style.display = willOpen ? 'table-row' : 'none';
+  if (willOpen) _openRepairDetailIds.add(id);
+  else _openRepairDetailIds.delete(id);
 }
 
 // ── Approve repair → open taskModal pre-filled ────────
@@ -2927,9 +3023,11 @@ function openServiceTicketDialog(repairId) {
   document.getElementById('st-description').textContent = req.description || '—';
   document.getElementById('st-assignee').textContent = req.convertedAssignee || req.officer || '—';
 
-  // Clear editable fields
-  document.getElementById('st-workDone').value = '';
-  document.getElementById('st-partsUsed').value = '';
+  // Pre-fill "Work Carried Out" with the chronological status-update log so
+  // ongoing progress notes automatically merge into the closing report.
+  // The tech can edit/append a final summary line before confirming closure.
+  document.getElementById('st-workDone').value = buildWorkCarriedOutText(req);
+  document.getElementById('st-partsUsed').value = req.partsUsed || '';
   document.getElementById('st-techName').value = req.convertedAssignee || '';
   document.getElementById('st-supervisorName').value = '';
   document.getElementById('st-remarks').value = '';
@@ -2988,7 +3086,12 @@ function printRepairTicket(repairId) {
   const closedAtStr = req.closedAt ? new Date(req.closedAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
 
   // If dialog is open, capture the current editable field values
-  const workDone = (repairId ? (req.serviceNotes||'') : (document.getElementById('st-workDone')?.value || req.serviceNotes||''));
+  // Use the finalized service notes if the repair is closed; otherwise fall back
+  // to the live dialog field, or compile the status-update log directly so an
+  // in-progress task still prints a chronological "Work Carried Out" section.
+  const workDone = (repairId
+    ? (req.serviceNotes || buildWorkCarriedOutText(req))
+    : (document.getElementById('st-workDone')?.value || req.serviceNotes || buildWorkCarriedOutText(req)));
   const parts    = (repairId ? (req.partsUsed||'')   : (document.getElementById('st-partsUsed')?.value || req.partsUsed||''));
   const techName = (repairId ? (req.closedByTech||'') : (document.getElementById('st-techName')?.value || req.closedByTech||''));
   const supvName = (repairId ? (req.closedBySupervisor||'') : (document.getElementById('st-supervisorName')?.value || req.closedBySupervisor||''));
