@@ -566,7 +566,15 @@ function goToVessel(vesselId) {
 // ══════════════════════════════════════════════════════
 function renderCurrentView() {
   if (currentView==='dashboard') renderDashboard();
+  else if (currentView==='repairs') renderRepairView();
+  else if (currentView==='certificates') renderCertView();
   else { renderTabs(); renderContent(); }
+  // Keep an open Task modal's Status Updates panel in sync with remote changes
+  const modal = document.getElementById('taskModal');
+  if (modal && modal.classList.contains('open')) {
+    const openTaskId = document.getElementById('tEditId')?.value;
+    if (openTaskId) renderTaskStatusUpdatesPanel(openTaskId);
+  }
 }
 function render() { renderTabs(); renderSidebar(); if (currentView==='fleet') renderContent(); else renderDashboard(); }
 
@@ -1068,6 +1076,7 @@ function openTaskModal(parentId){
   document.getElementById('pctLockNote').textContent='';
   document.getElementById('tRecurring').checked=false;
   document.getElementById('recurringGroup').style.display=parentId?'none':'block';
+  renderTaskStatusUpdatesPanel(null);
   openModal('taskModal');
 }
 
@@ -1087,6 +1096,7 @@ function openEditTaskModal(taskId){
   const hasSubs=vessel.tasks.some(t=>t.parentId===taskId);
   const pf=document.getElementById('tPct'); pf.readOnly=hasSubs; pf.style.opacity=hasSubs?'0.5':'1';
   document.getElementById('pctLockNote').textContent=hasSubs?'(auto from subtasks)':'';
+  renderTaskStatusUpdatesPanel(taskId);
   openModal('taskModal');
 }
 
@@ -2608,6 +2618,7 @@ function addStatusUpdate(repairId) {
   input.value = '';
   _openRepairDetailIds.add(repairId); // keep the panel open after re-render
   if (currentView === 'repairs') renderRepairView();
+  _refreshTaskModalIfLinkedRepair(repairId);
   showRepairToast('📝 Status update logged for ' + (req.trackingId || req.item || 'task'), 'teal');
 }
 
@@ -2622,6 +2633,114 @@ function deleteStatusUpdate(repairId, updateId) {
 
   _openRepairDetailIds.add(repairId);
   if (currentView === 'repairs') renderRepairView();
+  _refreshTaskModalIfLinkedRepair(repairId);
+}
+
+// ══════════════════════════════════════════════════════
+//  FLEET VIEW: STATUS UPDATES (shared with Repair Requests)
+// ══════════════════════════════════════════════════════
+// A Fleet View task that originated from an approved repair request shares
+// its statusUpdates log with that repair request record (same array, same
+// Firebase path, same renderer) — there is only ever one copy of the data,
+// so edits from either view are immediately visible in both. A task that
+// was added manually in Fleet View (never linked to a repair) keeps its own
+// progress log directly on the task record instead.
+
+// Find the repair request record linked to a given Fleet task, if any.
+function getLinkedRepairForTask(taskId) {
+  return (state.repairRequests || []).find(r => r.convertedTaskId === taskId);
+}
+
+// Populate/refresh the Status Updates panel inside the Task modal.
+// Pass null/undefined to hide it (e.g. while adding a brand-new task that
+// doesn't have an ID yet).
+function renderTaskStatusUpdatesPanel(taskId) {
+  const wrap = document.getElementById('taskStatusUpdatesWrap');
+  if (!wrap) return;
+  if (!taskId) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+
+  const linkedRepair = getLinkedRepairForTask(taskId);
+  if (linkedRepair) {
+    // Same record + same renderer as the Repair Request view — true shared
+    // data source, so this is automatically kept in sync.
+    wrap.style.display = 'block';
+    wrap.innerHTML = renderStatusUpdatesBlock(linkedRepair);
+    return;
+  }
+
+  const vessel = getActiveVessel();
+  const task = vessel && (vessel.tasks || []).find(t => t.id === taskId);
+  if (!task) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  wrap.style.display = 'block';
+  wrap.innerHTML = renderTaskOwnStatusUpdatesBlock(task);
+}
+
+// If the Task modal is currently open on the task linked to this repair,
+// refresh its panel too — keeps Fleet View and Repair Requests visually
+// unified the instant an update is added/removed from either side.
+function _refreshTaskModalIfLinkedRepair(repairId) {
+  const modal = document.getElementById('taskModal');
+  if (!modal || !modal.classList.contains('open')) return;
+  const openTaskId = document.getElementById('tEditId')?.value;
+  if (!openTaskId) return;
+  const linked = getLinkedRepairForTask(openTaskId);
+  if (linked && linked.id === repairId) renderTaskStatusUpdatesPanel(openTaskId);
+}
+
+// Renderer for standalone tasks (no linked repair request) — same look and
+// behaviour as renderStatusUpdatesBlock(), backed by task.statusUpdates.
+function renderTaskOwnStatusUpdatesBlock(t) {
+  const updates = (t.statusUpdates || []).slice().sort((a, b) => a.ts - b.ts);
+  const isOpen = t.status !== 'complete';
+
+  const historyHtml = updates.length
+    ? `<div class="status-update-list">${updates.map(u => `
+        <div class="status-update-item">
+          <div class="status-update-date">${formatUpdateTimestamp(u.ts)}</div>
+          <div class="status-update-text">${escHtml(u.text)}</div>
+          ${isOpen ? `<button class="status-update-del" title="Remove update" onclick="event.stopPropagation();deleteTaskStatusUpdate('${t.id}','${u.id}')">✕</button>` : ''}
+        </div>`).join('')}</div>`
+    : `<div class="status-update-empty">No status updates logged yet.</div>`;
+
+  const addRowHtml = isOpen ? `
+      <div class="status-update-add-row" onclick="event.stopPropagation();">
+        <input type="text" class="status-update-input" id="tsu-input-${t.id}"
+               placeholder="e.g. Parts cleared customs, work underway…"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskStatusUpdate('${t.id}');}">
+        <button class="btn ract-btn ract-approve" style="padding:6px 14px;" onclick="addTaskStatusUpdate('${t.id}')">+ Add Update</button>
+      </div>` : '';
+
+  return `
+    <div class="rdl-label" style="margin-bottom:6px;">Status Updates / Progress Log</div>
+    ${historyHtml}
+    ${addRowHtml}
+  `;
+}
+
+// Append a status update directly to a standalone Fleet task (no linked repair).
+function addTaskStatusUpdate(taskId) {
+  const vessel = getActiveVessel(); if (!vessel) return;
+  const task = (vessel.tasks || []).find(t => t.id === taskId); if (!task) return;
+  const input = document.getElementById('tsu-input-' + taskId); if (!input) return;
+  const text = input.value.trim(); if (!text) return;
+
+  if (!task.statusUpdates) task.statusUpdates = [];
+  task.statusUpdates.push({ id: uid(), ts: Date.now(), text });
+  saveState();
+
+  input.value = '';
+  renderTaskStatusUpdatesPanel(taskId);
+  showToast('📝 Status update logged');
+}
+
+// Remove a status update from a standalone Fleet task (no linked repair).
+function deleteTaskStatusUpdate(taskId, updateId) {
+  const vessel = getActiveVessel(); if (!vessel) return;
+  const task = (vessel.tasks || []).find(t => t.id === taskId); if (!task) return;
+  if (!task.statusUpdates) return;
+  task.statusUpdates = task.statusUpdates.filter(u => u.id !== updateId);
+  saveState();
+  renderTaskStatusUpdatesPanel(taskId);
 }
 
 // Compile the dated status-update log (+ any final closing service notes) into
@@ -2676,6 +2795,7 @@ function repairApproveViaModal(repairId) {
   document.getElementById('tRecurring').checked = false;
   document.getElementById('recurringGroup').style.display = 'block';
   document.getElementById('pctLockNote').textContent = '';
+  renderTaskStatusUpdatesPanel(null);
 
   // Pre-select the vessel in the active vessel context so saveTask() targets correctly
   const vessel = state.vessels.find(v => v.name === req.vessel);
